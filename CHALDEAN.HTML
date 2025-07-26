@@ -219,5 +219,11 @@
       document.getElementById('hours').textContent = lines.join('\n');
     };
   </script>
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js");
+  }
+</script>
+
 </body>
 </html>
