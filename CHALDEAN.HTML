@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <title>Chaldean Tool (Offline PWA)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <style>
+    :root {
+      --primary: #4a148c;
+      --accent: #7c4dff;
+      --bg: #f5f5f5;
+      --card-bg: #ffffff;
+      --text: #212121;
+      --muted: #616161;
+      --radius: 8px;
+      --gap: 1rem;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: sans-serif; background: var(--bg);
+      color: var(--text); padding: var(--gap);
+      display: flex; justify-content: center;
+    }
+    .container {
+      max-width: 800px; width: 100%;
+      display: grid; grid-template-columns: 1fr; gap: var(--gap);
+    }
+    @media(min-width: 700px) {
+      .container { grid-template-columns: 1fr 1fr; }
+    }
+    .card {
+      background: var(--card-bg); border-radius: var(--radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: var(--gap);
+      display: flex; flex-direction: column;
+    }
+    .card h2 {
+      font-size: 1.25rem; margin-bottom: 0.5rem;
+      color: var(--primary);
+    }
+    .field-group { margin-bottom: 1rem; }
+    .field-group label {
+      display: block; font-size: 0.9rem; margin-bottom: 0.3rem;
+      color: var(--muted);
+    }
+    .field-group input,
+    .field-group textarea,
+    .field-group button {
+      width: 100%; padding: 0.5rem;
+      font-size: 1rem; border-radius: var(--radius);
+      border: 1px solid #ccc;
+    }
+    .field-group textarea { min-height: 80px; resize: vertical; }
+    .field-group button {
+      background: var(--accent); color: #fff;
+      border: none; cursor: pointer; margin-top: 0.5rem;
+    }
+    .field-group button:hover {
+      background: var(--primary);
+    }
+    .output {
+      background: #fafafa; border: 1px solid #eee;
+      border-radius: var(--radius); padding: var(--gap);
+      white-space: pre-wrap; flex: 1; font-size: 0.95rem;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Search/Add Synonyms Card -->
+    <div class="card">
+      <h2>🔍 Αναζήτηση / Προσθήκη</h2>
+      <div class="field-group">
+        <label for="need">Λέξη‑κλειδί</label>
+        <input id="need" type="text" placeholder="π.χ. περιέργεια">
+      </div>
+      <div class="field-group">
+        <label for="related">Συσχετισμοί (κόμμα)</label>
+        <textarea id="related" placeholder="π.χ. Μάθηση,Επικοινωνία"></textarea>
+      </div>
+      <div class="field-group">
+        <button id="go">Αναζήτηση / Προσθήκη</button>
+      </div>
+      <div class="output" id="result">Το αποτέλεσμα θα εμφανιστεί εδώ.</div>
+    </div>
+
+    <!-- Planetary Hours Card -->
+    <div class="card">
+      <h2>🕒 Πλανητικές Ώρες</h2>
+      <div class="field-group">
+        <label for="sunrise">Ανατολή Ηλίου</label>
+        <input id="sunrise" type="time">
+      </div>
+      <div class="field-group">
+        <label for="sunset">Δύση Ηλίου</label>
+        <input id="sunset" type="time">
+      </div>
+      <div class="field-group">
+        <label for="date">Ημερομηνία</label>
+        <input id="date" type="date">
+      </div>
+      <div class="field-group">
+        <button id="calc">Υπολογισμός Ωρών</button>
+      </div>
+      <div class="output" id="hours">Οι πλανητικές ώρες θα εμφανιστούν εδώ.</div>
+    </div>
+  </div>
+
+  <script>
+    const PLANETS = ['Saturn','Jupiter','Mars','Sun','Venus','Mercury','Moon'];
+    const DAY_RULERS = {
+      Monday:'Moon',Tuesday:'Mars',Wednesday:'Mercury',
+      Thursday:'Jupiter',Friday:'Venus',Saturday:'Saturn',Sunday:'Sun'
+    };
+    const PLANET_NEEDS = {
+      Sun:['Υγεία','Ευτυχία','Δόξα','Αντοχή','Επιτυχία'],
+      Moon:['Όνειρα','Μαγεία','Φαντασία','Πνευματικότητα'],
+      Mars:['Θάρρος','Σεξουαλικότητα','Προστασία','Δράση','Θυμός'],
+      Mercury:['Επικοινωνία','Μάθηση','Ταξίδια','Διαπραγμάτευση','Ευφυΐα','Ανάλυση'],
+      Jupiter:['Πλούτος','Σοφία','Ευλογία','Επιρροή','Επέκταση'],
+      Venus:['Αγάπη','Ομορφιά','Ειρήνη','Έλξη','Φιλία','Έρωτας','Σχέσεις','Αρμονία'],
+      Saturn:['Πειθαρχία','Προστασία','Τέλος','Καρμικά θέματα','Όρια','Μίσος','Φόβος']
+    };
+    const PLANET_DIRECTIONS = {
+      Sun:'Ανατολή',Moon:'Βορειοδυτικά',Mars:'Νότος',
+      Mercury:'Βορράς',Jupiter:'Βόρειοανατολικά',
+      Venus:'Νότιοανατολικά',Saturn:'Δύση'
+    };
+
+    function normalize(s) {
+      return s.normalize('NFKD')
+              .replace(/[\u0300-\u036f]/g,'')
+              .toLowerCase()
+              .replace(/[^0-9a-zα-ω ]/g,'')
+              .trim();
+    }
+
+    function dbOpen() {
+      return new Promise((res, rej) => {
+        const rq = indexedDB.open('chaldeanDB',1);
+        rq.onupgradeneeded = e => e.target.result.createObjectStore('synonyms',{keyPath:'key'});
+        rq.onsuccess = e => res(e.target.result);
+        rq.onerror = e => rej(e);
+      });
+    }
+
+    async function getRelated(key) {
+      const db = await dbOpen();
+      return new Promise(r => {
+        const tx = db.transaction('synonyms','readonly').objectStore('synonyms').get(key);
+        tx.onsuccess = ()=> r(tx.result?.related || null);
+      });
+    }
+
+    async function saveRelated(key, arr) {
+      const db = await dbOpen();
+      return new Promise(r => {
+        const tx = db.transaction('synonyms','readwrite').objectStore('synonyms').put({key,related:arr});
+        tx.oncomplete = ()=> r();
+      });
+    }
+
+    document.getElementById('go').onclick = async () => {
+      const needRaw = document.getElementById('need').value;
+      const key = normalize(needRaw);
+      const relText = document.getElementById('related').value.trim();
+      let msg;
+      if (!key) return;
+      if (relText) {
+        const arr = relText.split(',').map(s=>normalize(s)).filter(s=>s);
+        await saveRelated(key,arr);
+        msg = '✅ Η νέα λέξη αποθηκεύτηκε.';
+      } else {
+        const fromDB = await getRelated(key);
+        const terms = fromDB || [key];
+        const out = [];
+        for (let p in PLANET_NEEDS) {
+          const norms = PLANET_NEEDS[p].map(normalize);
+          if (terms.some(t=>norms.includes(t))) {
+            out.push(`→ ${p}: ${PLANET_NEEDS[p].join(', ')} ➔ ${PLANET_DIRECTIONS[p]}`);
+          }
+        }
+        msg = out.length ? out.join('\n') : 'Δε βρέθηκε. Προσθέστε συσχετισμούς.';
+      }
+      document.getElementById('result').textContent = msg;
+    };
+
+    document.getElementById('calc').onclick = () => {
+      const sr = document.getElementById('sunrise').value;
+      const ss = document.getElementById('sunset').value;
+      const dt = document.getElementById('date').value;
+      if (!sr||!ss||!dt) return;
+      const [h1,m1]=sr.split(':').map(Number),
+            [h2,m2]=ss.split(':').map(Number),
+            d=new Date(dt);
+      const sunrise=new Date(d.getFullYear(),d.getMonth(),d.getDate(),h1,m1),
+            sunset=new Date(d.getFullYear(),d.getMonth(),d.getDate(),h2,m2),
+            nextSr=new Date(sunrise.getTime()+86400000);
+      const dayLen=(sunset-sunrise)/3600000,
+            nightLen=(nextSr-sunset)/3600000;
+      const weekday=d.toLocaleDateString('en-US',{weekday:'long'});
+      let idx=PLANETS.indexOf(DAY_RULERS[weekday]), seq=[];
+      for(let i=0;i<24;i++) seq.push(PLANETS[(idx+i)%7]);
+      const lines=[];
+      for(let i=0;i<12;i++){
+        const a=new Date(sunrise.getTime()+i*dayLen/12*3600000),
+              b=new Date(sunrise.getTime()+(i+1)*dayLen/12*3600000);
+        lines.push(`${i+1}η (Day): ${seq[i]} ${a.getHours().toString().padStart(2,'0')}:${a.getMinutes().toString().padStart(2,'0')}-${b.getHours().toString().padStart(2,'0')}:${b.getMinutes().toString().padStart(2,'0')}`);
+      }
+      for(let i=0;i<12;i++){
+        const a=new Date(sunset.getTime()+i*nightLen/12*3600000),
+              b=new Date(sunset.getTime()+(i+1)*nightLen/12*3600000);
+        lines.push(`${i+13}η (Night): ${seq[i+12]} ${a.getHours().toString().padStart(2,'0')}:${a.getMinutes().toString().padStart(2,'0')}-${b.getHours().toString().padStart(2,'0')}:${b.getMinutes().toString().padStart(2,'0')}`);
+      }
+      document.getElementById('hours').textContent = lines.join('\n');
+    };
+  </script>
+</body>
+</html>
